@@ -377,12 +377,12 @@ function rlUpdateBtn() {
 // ── open / close ──────────────────────────────────────────────────────────────
 
 function rouletteOpen() {
-  // Size canvas to fit the device
+  // Size canvas to fit the device — conservative so the sheet never overflows
   const canvas = document.getElementById('roulette-canvas');
   const size   = Math.min(
-    window.innerWidth  - 48,
-    Math.round(window.innerHeight * 0.50),
-    340
+    window.innerWidth  - 40,
+    Math.round(window.innerHeight * 0.40),
+    300
   );
   canvas.width  = size;
   canvas.height = size;
