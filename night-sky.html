@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+* { margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas { position: fixed; top: 0; left: 0; touch-action: none; cursor: grab; }
+#snap {
+  position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%);
+  width: 70px; height: 70px; border-radius: 50%;
+  background: none; border: none;
+  cursor: pointer; z-index: 10;
+  transition: transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+  overflow: visible;
+  display: flex; align-items: center; justify-content: center;
+}
+#snap:active { transform: translateX(-50%) scale(0.93); }
+#snap.empty  { opacity: 0.32; cursor: default; }
+
+/* ── Overlays: shared entry animation ────────────────────────────────────── */
+.overlay-fade-in {
+  animation: overlayFadeIn 0.45s cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+@keyframes overlayFadeIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Exposure ring ───────────────────────────────────────────────────────────── */
+#snap-ring {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; overflow: visible;
+}
+#snap-ring-arc.gold-state {
+  stroke: rgba(255, 215, 100, 0.95);
+  filter: drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
+  animation: goldPulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes goldPulse {
+  from { stroke-width: 1.8; filter: drop-shadow(0 0 4px rgba(255, 200, 50, 0.4)); }
+  to   { stroke-width: 2.8; filter: drop-shadow(0 0 12px rgba(255, 200, 50, 0.8)); }
+}
+
+/* ── Film roll counter ───────────────────────────────────────────────────────── */
+#snap-count {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 7px; align-items: center;
+  z-index: 10; pointer-events: none;
+}
+.snap-shot {
+  font-size: 10px; color: rgba(255,225,110,0.65);
+  transition: color 0.4s, text-shadow 0.4s;
+  text-shadow: 0 0 6px rgba(255,200,40,0.35);
+}
+.snap-shot.used { color: rgba(255,255,255,0.14); text-shadow: none; }
+#snap-flash {
+  position: fixed; inset: 0; background: #fff;
+  opacity: 0; pointer-events: none; z-index: 20;
+}
+#snap-flash.go { animation: shutter 0.55s ease-out forwards; }
+@keyframes shutter { 0% { opacity: 0.6; } 100% { opacity: 0; } }
+
+/* ── HUD ─────────────────────────────────────────────────────────────────────── */
+#hud {
+  position: fixed; top: 20px; right: 20px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  z-index: 10; pointer-events: none; font-family: 'Georgia', serif;
+}
+#hud-night {
+  font-size: 12px; font-style: italic; letter-spacing: 0.12em; text-transform: lowercase;
+  color: rgba(160,185,255,0.45);
+}
+#hud-stars { display: flex; gap: 10px; }
+.hud-star {
+  font-size: 18px; color: rgba(255,255,255,0.13);
+  transition: color 1.2s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.2s;
+  cursor: default;
+}
+.hud-star.found {
+  color: rgba(255,225,110,0.92);
+  text-shadow: 0 0 12px rgba(255,205,60,0.80), 0 0 30px rgba(255,190,40,0.35);
+}
+.hud-star.flash {
+  animation: hudFlash 1.2s ease-out forwards;
+}
+@keyframes hudFlash {
+  0%   { color: #fff; text-shadow: 0 0 30px #fff, 0 0 60px rgba(200,230,255,1); transform: scale(1.4); }
+  60%  { color: rgba(255,240,160,1); text-shadow: 0 0 16px rgba(255,220,80,0.95); transform: scale(1.1); }
+  100% { color: rgba(255,225,110,0.92); text-shadow: 0 0 12px rgba(255,205,60,0.80); transform: scale(1); }
+}
+
+/* ── Nuke button ─────────────────────────────────────────────────────────────── */
+#nuke-btn {
+  position: fixed; bottom: 36px; left: calc(50% + 56px);
+  width: 48px; height: 48px; border-radius: 50%;
+  background: none; border: 1.5px solid rgba(255,255,255,0.22);
+  cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.35s, box-shadow 0.35s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+#nuke-btn:hover { border-color: rgba(255,255,255,0.45); }
+#nuke-btn:active { transform: scale(0.9); }
+#nuke-btn.armed {
+  border-color: rgba(255,90,60,0.85);
+  box-shadow: 0 0 20px rgba(255,70,40,0.35), inset 0 0 12px rgba(255,60,30,0.1);
+  animation: nukePulse 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes nukePulse {
+  0%   { transform: scale(1); box-shadow: 0 0 15px rgba(255,70,40,0.3); }
+  10%  { transform: scale(1.08); box-shadow: 0 0 30px rgba(255,90,50,0.6); }
+  20%  { transform: scale(1); box-shadow: 0 0 15px rgba(255,70,40,0.3); }
+  30%  { transform: scale(1.05); box-shadow: 0 0 25px rgba(255,90,50,0.5); }
+  100% { transform: scale(1); box-shadow: 0 0 15px rgba(255,70,40,0.3); }
+}
+
+/* ── Gallery button ──────────────────────────────────────────────────────────── */
+#gallery-btn {
+  position: fixed; bottom: 36px; left: calc(50% - 104px);
+  width: 48px; height: 48px; border-radius: 50%;
+  background: none; border: 1.5px solid rgba(255,255,255,0.22);
+  cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+#gallery-btn:hover { border-color: rgba(255,255,255,0.50); box-shadow: 0 0 12px rgba(255,255,255,0.06); }
+#gallery-btn:active { transform: scale(0.9); }
+
+/* ── Gallery overlay ─────────────────────────────────────────────────────────── */
+#gallery {
+  display: none; position: fixed; inset: 0; z-index: 65;
+  background: rgba(1,2,14,0.95); backdrop-filter: blur(15px);
+  flex-direction: column;
+}
+#gallery.open { display: flex; animation: overlayFadeIn 0.5s ease-out forwards; }
+#gallery-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 22px 24px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+#gallery-title { font: italic 17px/1 'Georgia', serif; color: rgba(200,220,255,0.85); letter-spacing: 0.08em; }
+#gallery-close {
+  background: none; border: none; color: rgba(255,255,255,0.38);
+  font-size: 22px; cursor: pointer; padding: 2px 6px; line-height: 1;
+  transition: color 0.2s, transform 0.2s;
+}
+#gallery-close:hover { color: rgba(255,255,255,0.75); transform: rotate(90deg); }
+#gallery-grid {
+  flex: 1; overflow-y: auto; padding: 20px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px;
+  align-content: start; min-height: 0;
+}
+.gal-item {
+  position: relative; border-radius: 8px; overflow: hidden; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,6,0.6);
+  transition: border-color 0.3s, transform 0.3s;
+}
+.gal-item:hover { border-color: rgba(180,210,255,0.40); transform: scale(1.02); }
+.gal-item img { width: 100%; height: 130px; object-fit: contain; display: block; }
+.gal-label {
+  position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 10px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.8));
+  font: 11px 'Georgia', serif; color: rgba(190,210,255,0.75);
+}
+.gal-del {
+  position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;
+  border-radius: 50%; background: rgba(0,0,0,0.65); border: none;
+  color: rgba(255,255,255,0.60); font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+  opacity: 0; transition: opacity 0.2s, background 0.2s;
+}
+.gal-save {
+  position: absolute; top: 6px; left: 6px; width: 24px; height: 24px;
+  border-radius: 50%; background: rgba(0,0,0,0.65); border: none;
+  color: rgba(180,240,255,0.80); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+  opacity: 0; transition: opacity 0.2s, background 0.2s;
+}
+.gal-item:hover .gal-del,
+.gal-item:hover .gal-save { opacity: 1; }
+.gal-del:hover { background: rgba(255,70,40,0.4); color: #fff; }
+.gal-save:hover { background: rgba(100,210,255,0.4); color: #fff; }
+#gallery-empty {
+  display: none; text-align: center; padding: 100px 24px;
+  font: italic 15px/1.8 'Georgia', serif; color: rgba(140,165,255,0.45);
+}
+#gallery-full {
+  display: none; position: fixed; inset: 0; z-index: 70;
+  background: rgba(0,0,0,0.96); align-items: center; justify-content: center; cursor: zoom-out;
+}
+#gallery-full.open { display: flex; animation: overlayFadeIn 0.4s ease-out; }
+#gallery-full img { max-width: 94vw; max-height: 94vh; border-radius: 6px; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+
+/* ── Toast ───────────────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+  padding: 10px 24px; background: rgba(4,6,26,0.88);
+  border: 1px solid rgba(130,165,255,0.25); border-radius: 24px;
+  font: italic 14px 'Georgia', serif; color: rgba(210,228,255,0.95);
+  pointer-events: none; z-index: 35; white-space: nowrap;
+  opacity: 0; transition: opacity 0.45s cubic-bezier(0.2, 0, 0.2, 1), transform 0.45s;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(5px); }
+
+/* ── Timer HUD ───────────────────────────────────────────────────────────────── */
+#timer-hud {
+  position: fixed; top: 20px; left: 20px;
+  width: 52px; height: 52px; z-index: 10;
+  user-select: none; cursor: pointer;
+  transition: opacity 0.3s, transform 0.2s;
+}
+#timer-hud:hover { opacity: 0.85; transform: scale(1.05); }
+.timer-svg { display: block; overflow: visible; }
+.timer-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 1.6; }
+.timer-arc {
+  fill: none; stroke: rgb(160,210,255); stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 138.23 138.23;
+  transform-origin: 26px 26px; transform: rotate(-90deg);
+  transition: stroke 1.5s ease;
+  filter: drop-shadow(0 0 4px rgba(160,210,255,0.4));
+}
+#timer-time {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font: 9px/1 'Georgia', serif;
+  color: rgba(200,225,255,0.70);
+  letter-spacing: 0.04em; white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Welcome overlay ─────────────────────────────────────────────────────────── */
+#timer-welcome {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,2,16,0.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'Georgia', serif;
+  opacity: 0; pointer-events: none;
+  transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(5px);
+}
+#timer-welcome.visible   { opacity: 1; pointer-events: all; }
+#timer-welcome.dismissing { opacity: 0; pointer-events: none; }
+
+.tw-star {
+  font-size: 26px; color: rgba(190,215,255,0.50);
+  margin-bottom: 24px;
+  animation: twStarPulse 4s ease-in-out infinite;
+}
+@keyframes twStarPulse {
+  0%,100% { color: rgba(190,215,255,0.35); text-shadow: none; transform: scale(1); }
+  50%      { color: rgba(220,240,255,0.85); text-shadow: 0 0 25px rgba(170,205,255,0.60); transform: scale(1.15); }
+}
+.tw-night {
+  font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase;
+  color: rgba(140,175,255,0.45); margin-bottom: 22px;
+}
+.tw-title {
+  font-size: clamp(24px, 6vw, 42px);
+  color: rgba(220,238,255,0.95);
+  letter-spacing: 0.04em; font-weight: normal;
+  text-align: center;
+  text-shadow: 0 0 60px rgba(140,185,255,0.25);
+  margin: 0 0 10px;
+  padding: 0 20px;
+}
+#tw-subtitle {
+  font-size: clamp(13px, 2.6vw, 16px);
+  font-style: italic;
+  color: rgba(150,185,255,0.55);
+  letter-spacing: 0.06em; margin: 0 0 36px;
+  padding: 0 30px; text-align: center;
+}
+
+/* Arc in welcome */
+.tw-arc-wrap {
+  position: relative; width: 116px; height: 116px;
+  margin: 0 0 36px;
+}
+.tw-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 1.8; }
+.tw-arc {
+  fill: none; stroke: rgb(160,210,255); stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-dasharray: 276.46 276.46;
+  transform-origin: 54px 54px; transform: rotate(-90deg);
+  filter: drop-shadow(0 0 8px rgba(130,185,255,0.4));
+  transition: stroke 1.5s ease;
+}
+.tw-arc-inner {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none;
+}
+#tw-time-text {
+  font-size: 22px; color: rgba(220,238,255,0.95);
+  letter-spacing: 0.04em; line-height: 1;
+}
+.tw-arc-label {
+  font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(145,180,255,0.45); margin-top: 8px;
+}
+
+#tw-enter-btn {
+  background: rgba(140,185,255,0.05);
+  border: 1px solid rgba(140,185,255,0.30); border-radius: 36px;
+  padding: 13px 40px;
+  color: rgba(195,220,255,0.80);
+  font: 12px/1 'Georgia', serif; letter-spacing: 0.24em; text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.2, 0, 0.2, 1);
+}
+#tw-enter-btn:hover {
+  background: rgba(140,185,255,0.12);
+  border-color: rgba(180,215,255,0.60);
+  color: rgba(230,242,255,1);
+  box-shadow: 0 0 30px rgba(140,190,255,0.15);
+  transform: translateY(-2px);
+}
+#tw-enter-btn:active { transform: translateY(1px) scale(0.98); }
+
+/* ── Expired overlay ─────────────────────────────────────────────────────────── */
+#timer-expired {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(4,2,14,0.98);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'Georgia', serif;
+  opacity: 0; pointer-events: none;
+  transition: opacity 1.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#timer-expired::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(180,80,120,0.15) 0%, transparent 75%),
+              radial-gradient(ellipse 70% 50% at 50% 100%, rgba(100,60,180,0.12) 0%, transparent 75%);
+  pointer-events: none;
+}
+#timer-expired.visible { opacity: 1; pointer-events: all; }
+#timer-expired-canvas { position: absolute; inset: 0; z-index: 0; }
+.te-content {
+  position: relative; z-index: 1; text-align: center;
+  padding: 0 24px; max-width: 440px; width: 100%;
+}
+.te-star {
+  font-size: 20px; display: block;
+  color: rgba(255,205,150,0.50); margin-bottom: 30px;
+  animation: twStarPulse 5s ease-in-out infinite;
+}
+.te-title {
+  font-size: clamp(24px, 6vw, 40px);
+  color: rgba(255,240,220,0.95); letter-spacing: 0.03em;
+  font-weight: normal; margin: 0 0 12px;
+}
+.te-sub {
+  font-size: clamp(12px, 2.4vw, 15px);
+  font-style: italic;
+  color: rgba(210,175,190,0.55); letter-spacing: 0.06em; margin: 0 0 40px;
+}
+
+/* ── countdown block — visual centrepiece ── */
+.te-countdown-wrap {
+  margin-bottom: 36px;
+}
+.te-countdown-label {
+  font-size: 9px; letter-spacing: 0.3em; text-transform: uppercase;
+  color: rgba(230,180,140,0.45); margin-bottom: 10px;
+}
+#te-countdown {
+  font-size: clamp(40px, 9vw, 64px);
+  color: rgba(255,225,170,0.90); letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 40px rgba(255,180,80,0.25);
+}
+
+/* ── stats row ── */
+.te-stats {
+  font-size: clamp(13px, 2.4vw, 15px);
+  color: rgba(255,230,190,0.65);
+  letter-spacing: 0.06em;
+  margin-bottom: 32px;
+}
+.te-stats-unit { color: rgba(225,190,150,0.42); font-size: 0.9em; }
+.te-stats-sep  { color: rgba(200,150,100,0.3); margin: 0 12px; }
+
+/* ── action row ── */
+.te-actions {
+  display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.te-btn {
+  padding: 13px 26px;
+  background: rgba(255,185,130,0.08);
+  border: 1px solid rgba(255,185,130,0.25);
+  border-radius: 14px;
+  font: 13px/1 'Georgia', serif; letter-spacing: 0.08em;
+  color: rgba(255,215,180,0.75);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.te-btn:hover:not(:disabled) {
+  background: rgba(255,185,130,0.16);
+  border-color: rgba(255,185,130,0.55);
+  color: rgba(255,240,210,1);
+  transform: translateY(-2px);
+}
+.te-btn:active { transform: translateY(1px); }
+.te-btn:disabled {
+  border-color: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.25);
+  cursor: default;
+}
+
+/* ── buy-time: compact inline card ── */
+.te-buy-time {
+  margin-bottom: 36px;
+  padding: 16px 20px;
+  background: rgba(255,160,90,0.05);
+  border: 1px solid rgba(255,170,90,0.18);
+  border-radius: 16px;
+  display: inline-block; min-width: 240px;
+}
+.te-buy-label {
+  font-size: 9px; letter-spacing: 0.28em; text-transform: uppercase;
+  color: rgba(255,195,130,0.40); margin-bottom: 10px;
+}
+.te-buy-cost {
+  font: italic 17px/1 'Georgia', serif;
+  color: rgba(255,225,180,0.85);
+  margin-bottom: 14px; letter-spacing: 0.04em;
+}
+.te-btn-buy {
+  display: block; width: 100%; margin-bottom: 0;
+  background: rgba(255,165,90,0.1);
+  border-color: rgba(255,165,90,0.35);
+  color: rgba(255,225,180,0.85);
+}
+.te-btn-buy:hover:not(:disabled) {
+  background: rgba(255,165,90,0.2);
+  border-color: rgba(255,175,90,0.70);
+  color: rgba(255,240,210,1);
+}
+.te-buy-next {
+  font-size: 10px; letter-spacing: 0.1em;
+  color: rgba(225,170,110,0.35); margin-top: 8px;
+}
+.te-note {
+  margin-top: 32px;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: rgba(210,160,130,0.35);
+}
+.te-manual-btn {
+  margin-top: 18px; background: none; border: none; padding: 0;
+  font: 10px/1 'Georgia', serif; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(140,175,255,0.28); cursor: pointer;
+  transition: color 0.25s;
+}
+.te-manual-btn:hover { color: rgba(180,210,255,0.60); }
+
+
+/* ── Dust HUD ─────────────────────────────────────────────────────────────────── */
+#dust-hud {
+  font: italic 12px/1 'Georgia', serif;
+  color: rgba(255,225,100,0.75);
+  letter-spacing: 0.08em;
+  margin-top: 8px;
+  text-align: right;
+  transition: color 0.4s;
+  position: relative;
+}
+#dust-count { font-size: 14px; font-style: normal; font-weight: bold; }
+#dust-mult {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 12px;
+  color: rgba(255,210,60,1);
+  text-shadow: 0 0 10px rgba(255,210,60,0.85);
+  animation: multPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes multPulse {
+  from { opacity: 0.75; transform: scale(1); }
+  to   { opacity: 1.0; transform: scale(1.1); }
+}
+#dust-hud.pulse #dust-count {
+  animation: dustFlash 0.6s cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+@keyframes dustFlash {
+  0%   { color: #fff; text-shadow: 0 0 18px rgba(255,225,80,1); transform: scale(1.2); }
+  100% { color: rgba(255,225,100,0.75); text-shadow: none; transform: scale(1); }
+}
+
+/* ── Fragment HUD ─────────────────────────────────────────────────────────────── */
+#frag-hud {
+  color: rgba(170,235,255,0.65);
+  font: italic 12px/1 'Georgia', serif;
+  margin-top: 5px;
+  letter-spacing: 0.08em;
+  text-align: right;
+  transition: color 0.4s;
+}
+#frag-count { font-size: 13px; font-style: normal; font-weight: bold; color: rgba(190,245,255,0.80); }
+#frag-hud.pulse #frag-count {
+  animation: fragFlash 0.6s cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+@keyframes fragFlash {
+  0%   { color: #fff; text-shadow: 0 0 15px rgba(130,230,255,1); transform: scale(1.2); }
+  100% { color: rgba(190,245,255,0.80); text-shadow: none; transform: scale(1); }
+}
+
+/* ── Gallery tabs ─────────────────────────────────────────────────────────────── */
+#gallery-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+  padding: 0 24px;
+  gap: 8px;
+}
+.gal-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 18px 10px;
+  font: 12px/1 'Georgia', serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(140,175,255,0.48);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: -1px;
+}
+.gal-tab:hover { color: rgba(190,215,255,0.80); }
+.gal-tab.active {
+  color: rgba(210,230,255,0.95);
+  border-bottom-color: rgba(160,200,255,0.65);
+}
+
+/* ── Gallery panes ────────────────────────────────────────────────────────────── */
+#gallery-photos-pane,
+#gallery-rewards-pane {
+  flex: 1; flex-direction: column; overflow: hidden; min-height: 0;
+}
+
+/* ── Rewards grid ─────────────────────────────────────────────────────────────── */
+#rewards-grid {
+  flex: 1; overflow-y: auto; padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+#rewards-empty {
+  display: none; text-align: center; padding: 100px 24px;
+  font: italic 15px/1.8 'Georgia', serif; color: rgba(140,165,255,0.45);
+}
+.reward-card {
+  position: relative;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,225,100,0.22);
+  border-radius: 12px;
+  padding: 22px 18px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+.reward-card:hover { border-color: rgba(255,225,100,0.45); background: rgba(255,255,255,0.06); transform: translateY(-3px); }
+.reward-icon  { font-size: 36px; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255,225,100,0.3)); }
+.reward-label {
+  font: 12px 'Georgia', serif; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(255,225,100,0.80); margin-bottom: 10px;
+}
+.reward-desc  {
+  font: italic 14px/1.6 'Georgia', serif;
+  color: rgba(215,232,255,0.88);
+  margin-bottom: 12px;
+}
+.reward-count {
+  position: absolute; top: 12px; right: 14px;
+  font: 700 12px 'Georgia', serif; letter-spacing: 0.04em;
+  color: rgba(255,225,100,0.90);
+  background: rgba(255,225,100,0.12);
+  border: 1px solid rgba(255,225,100,0.35);
+  border-radius: 20px; padding: 2px 8px;
+}
+
+/* ── Pause overlay ────────────────────────────────────────────────────────────── */
+#pause-overlay {
+  display: none; position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,1,10,0.85); backdrop-filter: blur(25px);
+  align-items: center; justify-content: center;
+}
+#pause-overlay.open { display: flex; animation: overlayFadeIn 0.35s ease-out; }
+#pause-card {
+  text-align: center; padding: 48px 56px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(160,205,255,0.18);
+  border-radius: 24px;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.4);
+}
+#pause-remaining {
+  font: 48px/1 'Georgia', serif;
+  color: rgba(200,230,255,0.95);
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+#pause-label {
+  font: 12px 'Georgia', serif; letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(145,180,255,0.45); margin-bottom: 36px;
+}
+#pause-resume-btn {
+  display: block; width: 100%;
+  background: rgba(160,205,255,0.1);
+  border: 1px solid rgba(160,205,255,0.35);
+  border-radius: 12px; padding: 14px 36px;
+  font: 15px 'Georgia', serif; letter-spacing: 0.08em;
+  color: rgba(200,230,255,0.90); cursor: pointer;
+  transition: all 0.3s ease;
+}
+#pause-resume-btn:hover { background: rgba(160,205,255,0.2); border-color: rgba(180,220,255,0.60); transform: translateY(-2px); }
+#pause-resume-btn:active { transform: translateY(1px); }
+
+/* ── Shop overlay ─────────────────────────────────────────────────────────────── */
+#shop-overlay {
+  display: none; position: fixed; inset: 0; z-index: 45;
+  background: transparent;
+  align-items: center; justify-content: center;
+}
+#shop-overlay.open { display: flex; animation: overlayFadeIn 0.45s ease-out forwards; }
+#shop-card {
+  --c: 180,210,255;
+  position: relative;
+  background: rgba(4,5,22,0.98);
+  border: 1px solid rgba(var(--c),0.35);
+  border-radius: 24px;
+  padding: 0;
+  max-width: 380px; width: 92%;
+  font-family: 'Georgia', serif;
+  overflow: hidden;
+  box-shadow: 0 0 100px rgba(var(--c),0.12), 0 0 0 1px rgba(var(--c),0.08) inset, 0 20px 60px rgba(0,0,0,0.5);
+}
+/* constellation-colored nebula glow at top */
+#shop-card::before {
+  content: '';
+  position: absolute; top: -70px; left: 50%; transform: translateX(-50%);
+  width: 280px; height: 220px;
+  background: radial-gradient(ellipse, rgba(var(--c),0.22) 0%, transparent 75%);
+  pointer-events: none;
+}
+.shop-header-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid rgba(var(--c),0.15);
+}
+#shop-header {
+  font: italic 13px 'Georgia', serif; letter-spacing: 0.18em; text-transform: lowercase;
+  color: rgba(var(--c),0.85);
+}
+.overlay-close {
+  background: none; border: none; color: rgba(255,255,255,0.30);
+  font-size: 18px; cursor: pointer; line-height: 1; padding: 4px 6px;
+  border-radius: 50%; transition: all 0.25s ease;
+}
+.overlay-close:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.08); transform: rotate(90deg); }
+.shop-body { padding: 32px 30px 30px; text-align: center; }
+#shop-icon {
+  font-size: 60px; display: block; margin-bottom: 22px;
+  filter: drop-shadow(0 0 20px rgba(var(--c),0.65));
+  animation: iconFloat 3.5s ease-in-out infinite;
+}
+@keyframes iconFloat {
+  0%,100% { transform: translateY(0) scale(1);   }
+  50%      { transform: translateY(-8px) scale(1.05); }
+}
+#shop-desc {
+  font: italic 16px/1.7 'Georgia', serif;
+  color: rgba(220,240,255,0.88);
+  margin: 0 0 28px;
+}
+.shop-price-row {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(var(--c),0.07);
+  border: 1px solid rgba(var(--c),0.18);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 22px;
+}
+.shop-price-row .price-item { text-align: center; flex: 1; }
+.shop-price-row .price-label {
+  font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase;
+  color: rgba(var(--c),0.55); display: block; margin-bottom: 6px;
+}
+.shop-price-row .price-val {
+  font-size: 20px; color: rgba(var(--c),0.95);
+  letter-spacing: 0.04em;
+}
+.shop-price-row .price-divider {
+  width: 1px; height: 36px; background: rgba(var(--c),0.22);
+}
+.shop-btn {
+  width: 100%; padding: 16px;
+  background: rgba(var(--c),0.08);
+  border: 1px solid rgba(var(--c),0.45);
+  border-radius: 14px;
+  color: rgba(var(--c),0.95);
+  font: 12px/1 'Georgia', serif; letter-spacing: 0.24em; text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.2, 0, 0.2, 1);
+}
+.shop-btn:hover:not(:disabled) {
+  background: rgba(var(--c),0.18);
+  border-color: rgba(var(--c),0.85);
+  box-shadow: 0 0 30px rgba(var(--c),0.25);
+  transform: translateY(-2px);
+}
+.shop-btn:active { transform: translateY(1px); }
+.shop-btn.bought {
+  background: rgba(100,210,120,0.08);
+  border-color: rgba(100,210,120,0.35);
+  color: rgba(125,225,145,0.60);
+  cursor: default;
+  transform: none;
+}
+.shop-btn.broke {
+  background: none;
+  border-color: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.28);
+  cursor: default;
+  transform: none;
+}
+
+/* ── Film refill overlay ──────────────────────────────────────────────────────── */
+#refill-overlay {
+  display: none; position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,1,10,0.88); backdrop-filter: blur(20px);
+  align-items: center; justify-content: center;
+  font-family: 'Georgia', serif;
+}
+#refill-overlay.open { display: flex; animation: overlayFadeIn 0.4s ease-out; }
+#refill-card {
+  background: rgba(4,5,22,0.99);
+  border: 1px solid rgba(180,245,255,0.20); border-radius: 20px;
+  padding: 36px 30px 28px; max-width: 320px; width: 90%; text-align: center;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.4), 0 0 60px rgba(100,215,255,0.1);
+}
+#refill-icon  { font-size: 40px; margin-bottom: 14px; filter: drop-shadow(0 0 12px rgba(100,215,255,0.4)); }
+#refill-title { font: 19px 'Georgia', serif; color: rgba(225,242,255,0.95); margin-bottom: 12px; letter-spacing: 0.04em; }
+#refill-desc  { font: italic 14px/1.7 'Georgia', serif; color: rgba(170,205,255,0.70); margin-bottom: 16px; }
+#refill-wallet { font: 15px 'Georgia', serif; color: rgba(185,245,255,0.85); margin-bottom: 24px; }
+#refill-btn {
+  display: block; width: 100%; padding: 13px;
+  background: rgba(100,215,255,0.15); border: 1px solid rgba(180,245,255,0.35);
+  border-radius: 12px; color: rgba(210,245,255,0.95);
+  font: 15px 'Georgia', serif; cursor: pointer; margin-bottom: 12px;
+  transition: all 0.3s ease;
+}
+#refill-btn:hover:not(:disabled) { background: rgba(100,215,255,0.28); border-color: rgba(180,245,255,0.70); transform: translateY(-2px); }
+#refill-btn:disabled { opacity: 0.3; cursor: default; }
+#refill-cancel {
+  background: none; border: none; color: rgba(150,180,255,0.50);
+  font: italic 13px 'Georgia', serif; cursor: pointer; padding: 8px;
+  transition: color 0.2s;
+}
+#refill-cancel:hover { color: rgba(160,195,255,0.85); }
+
+/* ── Purchase confirmation ────────────────────────────────────────────────────── */
+#confirm-overlay {
+  display: none; position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,1,10,0.9); backdrop-filter: blur(25px);
+  align-items: center; justify-content: center;
+  font-family: 'Georgia', serif;
+}
+#confirm-overlay.open { display: flex; animation: overlayFadeIn 0.5s cubic-bezier(0.2, 0, 0.2, 1) forwards; }
+#confirm-card {
+  background: rgba(4,5,22,0.99);
+  border: 1px solid rgba(255,225,100,0.28);
+  border-radius: 24px;
+  padding: 44px 32px 36px;
+  max-width: 360px; width: 92%;
+  text-align: center;
+  box-shadow: 0 0 120px rgba(255,200,50,0.12), 0 0 0 1px rgba(255,200,50,0.08) inset, 0 20px 70px rgba(0,0,0,0.5);
+  position: relative; overflow: hidden;
+}
+#confirm-card::before {
+  content: '';
+  position: absolute; top: -80px; left: 50%; transform: translateX(-50%);
+  width: 300px; height: 240px;
+  background: radial-gradient(ellipse, rgba(255,205,60,0.16) 0%, transparent 75%);
+  pointer-events: none;
+}
+#confirm-icon {
+  font-size: 64px; display: block; margin-bottom: 24px;
+  filter: drop-shadow(0 0 25px rgba(255,205,60,0.65));
+  animation: iconFloat 3.5s ease-in-out infinite;
+}
+.confirm-title {
+  font: 18px 'Georgia', serif; font-weight: normal; letter-spacing: 0.15em;
+  color: rgba(255,232,120,0.95); margin: 0 0 16px;
+  text-shadow: 0 0 25px rgba(255,205,60,0.45);
+}
+#confirm-desc {
+  font: italic 15px/1.7 'Georgia', serif;
+  color: rgba(220,235,255,0.80);
+  margin: 0 0 32px;
+}
+.confirm-btns { display: flex; flex-direction: column; gap: 12px; }
+.confirm-btns button {
+  padding: 15px; background: none;
+  border: 1px solid rgba(145,190,255,0.28); border-radius: 12px;
+  color: rgba(185,220,255,0.70);
+  font: 11px/1 'Georgia', serif; letter-spacing: 0.24em;
+  text-transform: uppercase; cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.2, 0, 0.2, 1);
+}
+#confirm-see-rewards {
+  border-color: rgba(255,225,100,0.45) !important;
+  color: rgba(255,235,120,0.85) !important;
+  background: rgba(255,215,60,0.06) !important;
+}
+.confirm-btns button:hover {
+  border-color: rgba(255,255,255,0.55) !important;
+  color: rgba(255,255,255,0.95) !important;
+  background: rgba(255,255,255,0.06) !important;
+  transform: translateY(-2px);
+}
+.confirm-btns button:active { transform: translateY(1px); }
+
+/* ── Manual / Guide overlay ──────────────────────────────────────────────────── */
+#manual-overlay {
+  display: none; position: fixed; inset: 0; z-index: 62;
+  background: rgba(0,2,14,0.97); backdrop-filter: blur(20px);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  font-family: 'Georgia', serif;
+}
+#manual-overlay.open { display: block; animation: shopFadeIn 0.4s ease-out; }
+#manual-close {
+  position: sticky; top: 16px; float: right; margin: 16px 20px 0 0;
+  background: none; border: 1px solid rgba(140,175,255,0.20);
+  border-radius: 50%; width: 36px; height: 36px;
+  color: rgba(160,190,255,0.50); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.2s, color 0.2s; z-index: 1;
+}
+#manual-close:hover { border-color: rgba(180,210,255,0.55); color: rgba(210,230,255,0.90); }
+#manual-content {
+  max-width: 560px; margin: 0 auto;
+  padding: 50px 28px 90px; clear: both;
+}
+.man-transmission {
+  text-align: center; padding: 10px 0 38px;
+  border-bottom: 1px solid rgba(140,175,255,0.10); margin-bottom: 44px;
+}
+.man-signal {
+  font-size: 9px; letter-spacing: 0.28em; text-transform: uppercase;
+  color: rgba(100,200,255,0.40); margin-bottom: 24px;
+}
+.man-opening {
+  font-size: 21px; color: rgba(220,235,255,0.88); line-height: 1.6; margin-bottom: 18px;
+  text-shadow: 0 0 60px rgba(140,200,255,0.18);
+  display: inline-block; /* needed for transform animation */
+}
+.man-tagline {
+  font-size: 13px; color: rgba(140,175,255,0.52); font-style: italic; line-height: 1.8;
+  margin-top: 4px;
+}
+.man-chapter { margin-bottom: 48px; }
+.man-heading {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+}
+.man-heading::before, .man-heading::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(to right, transparent, rgba(140,185,255,0.18), transparent);
+}
+.man-heading span {
+  font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase;
+  color: rgba(155,200,255,0.50); white-space: nowrap;
+}
+.man-body {
+  font-size: 14px; color: rgba(172,200,255,0.68); line-height: 1.95; margin-bottom: 14px;
+}
+.man-body em   { color: rgba(220,235,255,0.90); font-style: normal; }
+.man-body strong { color: rgba(255,220,90,0.82); font-weight: normal; }
+.man-diagram-row {
+  display: flex; gap: 20px; justify-content: center;
+  flex-wrap: wrap; margin: 26px 0 8px;
+}
+.man-diagram { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.man-diagram svg {
+  border-radius: 12px; background: rgba(3,5,22,0.85);
+  border: 1px solid rgba(140,175,255,0.10);
+}
+.man-caption {
+  font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+  color: rgba(120,160,255,0.38);
+}
+.man-list { margin: 10px 0 18px; padding: 0; list-style: none; }
+.man-list li {
+  font-size: 13px; color: rgba(160,195,255,0.62); padding: 6px 0;
+  border-bottom: 1px solid rgba(140,175,255,0.07);
+  display: flex; gap: 10px; line-height: 1.65;
+}
+.man-warning {
+  background: rgba(255,80,50,0.05); border-left: 2px solid rgba(255,90,60,0.32);
+  padding: 13px 16px; border-radius: 0 8px 8px 0;
+  font-size: 13px; color: rgba(255,158,138,0.72); line-height: 1.75; margin: 14px 0;
+}
+.man-closing {
+  text-align: center; padding: 40px 0 0;
+  border-top: 1px solid rgba(140,175,255,0.10); margin-top: 10px;
+}
+.man-closing-star { font-size: 20px; color: rgba(180,210,255,0.28); margin-bottom: 20px; }
+.man-closing-text {
+  font-size: 15px; color: rgba(195,218,255,0.62); line-height: 2.0; font-style: italic;
+}
+.man-closing-sig {
+  margin-top: 22px; font-size: 10px; letter-spacing: 0.20em; text-transform: uppercase;
+  color: rgba(120,160,255,0.30);
+}
+#manual-btn {
+  background: none; border: 1px solid rgba(140,185,255,0.16); border-radius: 20px;
+  padding: 8px 22px; color: rgba(140,180,255,0.45);
+  font: 10px/1 'Georgia', serif; letter-spacing: 0.18em; text-transform: uppercase;
+  cursor: pointer; margin-top: 14px;
+  transition: border-color 0.3s, color 0.3s;
+}
+#manual-btn:hover { border-color: rgba(180,215,255,0.38); color: rgba(185,218,255,0.78); }
+#manual-hud-btn {
+  position: fixed; bottom: 38px; right: 20px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: none; border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(180,205,255,0.38); font: 14px/1 'Georgia', serif;
+  cursor: pointer; z-index: 62; display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.25s, color 0.25s;
+  -webkit-tap-highlight-color: transparent;
+}
+#manual-hud-btn:hover { border-color: rgba(180,210,255,0.40); color: rgba(200,225,255,0.75); }
+
+/* ── Manual animations ──────────────────────────────────────────────────────── */
+@keyframes man-twinkle {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.12; }
+}
+@keyframes man-flicker {
+  0%, 86%, 100% { opacity: 0.40; }
+  88%           { opacity: 0.07; }
+  90%           { opacity: 0.33; }
+  92%           { opacity: 0.04; }
+  94%           { opacity: 0.36; }
+}
+@keyframes man-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes man-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes man-fadein {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes man-fadeop {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes man-pulse-dot {
+  0%, 100% { transform: scale(1);   opacity: 0.85; }
+  50%      { transform: scale(1.5); opacity: 0.40; }
+}
+@keyframes man-heart-pop {
+  0%   { opacity: 0; transform: translateY(0)   scale(0.4); }
+  18%  { opacity: 1; transform: translateY(-10px) scale(1.15); }
+  45%  { opacity: 1; transform: translateY(-22px) scale(1.0); }
+  100% { opacity: 0; transform: translateY(-58px) scale(0.88); }
+}
+#man-heart-pop {
+  position: fixed; pointer-events: none; z-index: 100;
+  font-family: 'Georgia', serif; font-size: 17px; font-style: italic;
+  color: rgba(255,165,195,0.96);
+  text-shadow: 0 0 18px rgba(255,100,150,0.55), 0 0 40px rgba(255,80,130,0.25);
+  opacity: 0; white-space: nowrap;
+}
+#man-heart-pop.pop { animation: man-heart-pop 2.0s ease-out forwards; }
+.man-diagram-heart { cursor: pointer; }
+.man-diagram-heart:active svg { transform: scale(0.96); }
+.man-diagram-heart svg { transition: transform 0.12s ease; }
+.man-signal  { animation: man-flicker 13s ease-in-out infinite; }
+.man-opening { animation: man-float 9s ease-in-out infinite; }
+#manual-overlay.open #manual-content > * {
+  animation: man-fadein 0.65s ease-out backwards;
+}
+#manual-overlay.open #manual-content > *:nth-child(1) { animation-delay: 0.00s; }
+#manual-overlay.open #manual-content > *:nth-child(2) { animation-delay: 0.08s; }
+#manual-overlay.open #manual-content > *:nth-child(3) { animation-delay: 0.16s; }
+#manual-overlay.open #manual-content > *:nth-child(4) { animation-delay: 0.24s; }
+#manual-overlay.open #manual-content > *:nth-child(5) { animation-delay: 0.32s; }
+#manual-overlay.open #manual-content > *:nth-child(6) { animation-delay: 0.40s; }
+#manual-overlay.open #manual-content > *:nth-child(7) { animation-delay: 0.48s; }
+#manual-overlay.open #manual-content > *:nth-child(8) { animation-delay: 0.56s; }
+
+/* ── Block everything when time is up ────────────────────────────────────────── */
+body.sky-expired #c              { pointer-events: none; }
+body.sky-expired #snap,
+body.sky-expired #snap-count,
+body.sky-expired #nuke-btn,
+body.sky-expired #gallery-btn,
+body.sky-expired #hud,
+body.sky-expired #frag-hud,
+body.sky-expired #timer-hud,
+body.sky-expired #toast          { display: none; }
+body.sky-expired #shop-overlay,
+body.sky-expired #confirm-overlay,
+body.sky-expired #refill-overlay  { display: none !important; }
+
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="snap" title="Save image">
+  <!-- exposure ring: track + charging arc -->
+  <svg id="snap-ring" width="70" height="70" viewBox="0 0 70 70" fill="none">
+    <circle cx="35" cy="35" r="33" stroke="rgba(255,255,255,0.15)" stroke-width="1.8"/>
+    <circle id="snap-ring-arc" cx="35" cy="35" r="33"
+            stroke="rgba(255,255,255,0)" stroke-width="1.8" stroke-linecap="round"
+            stroke-dasharray="207.3 207.3" stroke-dashoffset="207.3"
+            transform="rotate(-90 35 35)"/>
+  </svg>
+  <!-- camera icon -->
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none"
+       style="position:absolute; opacity:0.70;">
+    <rect x="2" y="7" width="18" height="12" rx="2" stroke="white" stroke-width="1.3"/>
+    <circle cx="11" cy="13" r="3.6" stroke="white" stroke-width="1.3"/>
+    <path d="M8 7V6.5a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0114 6.5V7" stroke="white" stroke-width="1.3"/>
+  </svg>
+</button>
+<!-- film roll dots (3 shots/day) -->
+<div id="snap-count">
+  <span class="snap-shot" id="sc0">✦</span>
+  <span class="snap-shot" id="sc1">✦</span>
+  <span class="snap-shot" id="sc2">✦</span>
+</div>
+<button id="nuke-btn" title="Destroy a star">
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="opacity:0.65">
+    <circle cx="10" cy="10" r="3.2" stroke="white" stroke-width="1.3"/>
+    <line x1="10" y1="1"  x2="10" y2="5.2"  stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="10" y1="14.8" x2="10" y2="19" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="1"  y1="10" x2="5.2"  y2="10" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="14.8" y1="10" x2="19" y2="10" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="3.5" y1="3.5"  x2="6.5" y2="6.5"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="13.5" y1="13.5" x2="16.5" y2="16.5" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="16.5" y1="3.5"  x2="13.5" y2="6.5"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="3.5"  y1="16.5" x2="6.5"  y2="13.5" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+  </svg>
+</button>
+<button id="gallery-btn" title="Photo gallery">
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="opacity:0.60">
+    <rect x="1" y="1" width="7" height="7" rx="1.2" stroke="white" stroke-width="1.3"/>
+    <rect x="10" y="1" width="7" height="7" rx="1.2" stroke="white" stroke-width="1.3"/>
+    <rect x="1" y="10" width="7" height="7" rx="1.2" stroke="white" stroke-width="1.3"/>
+    <rect x="10" y="10" width="7" height="7" rx="1.2" stroke="white" stroke-width="1.3"/>
+  </svg>
+</button>
+<div id="hud">
+  <div id="hud-night">Nuit <span id="hud-night-num">1</span></div>
+  <div id="hud-stars">
+    <span class="hud-star" id="hud-heart"     title="Hidden constellation">✦</span>
+    <span class="hud-star" id="hud-louisa"    title="Hidden constellation">✦</span>
+    <span class="hud-star" id="hud-lily"      title="Hidden constellation">✦</span>
+    <span class="hud-star" id="hud-moon"      title="Hidden constellation">✦</span>
+    <span class="hud-star" id="hud-kiss"      title="Hidden constellation">✦</span>
+    <span class="hud-star" id="hud-butterfly" title="Hidden constellation">✦</span>
+    <span class="hud-star" id="hud-shark"     title="Hidden constellation">✦</span>
+  </div>
+  <div id="dust-hud">
+    <span id="dust-count">0</span> ✦
+    <span id="dust-mult" style="display:none">×3</span>
+  </div>
+  <div id="frag-hud" style="display:none"><span id="frag-count">0</span> ✧</div>
+</div>
+<div id="gallery">
+  <div id="gallery-header">
+    <span id="gallery-title">Tes Souvenirs</span>
+    <button id="gallery-close">✕</button>
+  </div>
+  <div id="gallery-tabs">
+    <button class="gal-tab active" data-tab="photos" onclick="switchGalleryTab('photos')">Photos</button>
+    <button class="gal-tab" data-tab="rewards" onclick="switchGalleryTab('rewards')">Étoiles & Cadeaux</button>
+  </div>
+  <div id="gallery-photos-pane">
+    <div id="gallery-grid"></div>
+    <p id="gallery-empty">Pas encore de souvenirs.<br>Utilise l'appareil pour capturer le ciel.</p>
+  </div>
+  <div id="gallery-rewards-pane" style="display:none">
+    <div id="rewards-grid"></div>
+    <p id="rewards-empty">Pas encore d'étoiles.<br>Découvre les constellations pour ouvrir leur marché céleste.</p>
+  </div>
+</div>
+<div id="gallery-full"><img id="gallery-full-img" alt=""></div>
+
+<!-- ── Shop overlay ───────────────────────────────────────────────────────── -->
+<div id="shop-overlay">
+  <div id="shop-card">
+    <div class="shop-header-row">
+      <span id="shop-header">Le Marché Céleste</span>
+      <button id="shop-close" class="overlay-close">✕</button>
+    </div>
+    <div class="shop-body">
+      <span id="shop-icon">✦</span>
+      <p id="shop-desc">...</p>
+      <div class="shop-price-row">
+        <div class="price-item">
+          <span class="price-label">Poussière</span>
+          <span class="price-val"><span id="shop-price">0</span> ✦</span>
+        </div>
+        <div class="price-divider"></div>
+        <div class="price-item">
+          <span class="price-label">Éclat</span>
+          <span class="price-val" style="color:rgba(180,240,255,0.85)"><span id="shop-frag-price">1</span> ✧</span>
+        </div>
+        <div class="price-divider"></div>
+        <div class="price-item">
+          <span class="price-label">Tu as</span>
+          <span class="price-val"><span id="shop-wallet">0</span> ✦</span>
+          <span style="display:block;font-size:11px;color:rgba(180,240,255,0.65);margin-top:3px"><span id="shop-frags">0</span> ✧</span>
+        </div>
+      </div>
+      <button id="shop-buy-btn" class="shop-btn">Réclamer ce cadeau</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Purchase confirmation overlay ─────────────────────────────────────── -->
+<div id="confirm-overlay">
+  <div id="confirm-card">
+    <div id="confirm-icon">✦</div>
+    <h2 class="confirm-title">Cadeau obtenu !</h2>
+    <p id="confirm-desc">...</p>
+    <div class="confirm-btns">
+      <button id="confirm-see-rewards">Voir mes cadeaux</button>
+      <button id="confirm-close">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="snap-flash"></div>
+
+<!-- ── Film refill overlay ───────────────────────────────────────────────── -->
+<div id="refill-overlay">
+  <div id="refill-card">
+    <div id="refill-icon">🎞️</div>
+    <div id="refill-title">Pellicule vide</div>
+    <div id="refill-desc">Utiliser un éclat de constellation pour débloquer une prise supplémentaire ?</div>
+    <div id="refill-wallet"><span id="refill-frag-count">0</span> ✧ disponibles</div>
+    <button id="refill-btn">Dépenser 1 ✧</button>
+    <button id="refill-cancel">Annuler</button>
+  </div>
+</div>
+
+<!-- ── Manual HUD shortcut ───────────────────────────────────────────────── -->
+<button id="manual-hud-btn" title="Guide de navigation" onclick="document.getElementById('manual-overlay').classList.add('open'); timerFreezeForManual()">?</button>
+
+<div id="manual-overlay">
+  <button id="manual-close" onclick="document.getElementById('manual-overlay').classList.remove('open'); timerUnfreezeForManual()">✕</button>
+  <div id="manual-content">
+
+    <div class="man-transmission">
+      <div class="man-signal">· · ·&nbsp;&nbsp;transmission reçue&nbsp;&nbsp;· · · &nbsp;&nbsp;fréquence inconnue&nbsp;&nbsp;· · ·</div>
+      <div class="man-opening">Tu flottais entre deux galaxies quand ce signal t'a trouvée.</div>
+      <div class="man-tagline">C'est pas un hasard.<br>Des constellations t'attendent, et des cadeaux aussi. <em style="font-style:normal; color:rgba(255,215,100,0.70);">Vrais</em>.</div>
+    </div>
+
+    <div class="man-chapter">
+      <div class="man-heading"><span>I — naviguer</span></div>
+      <p class="man-body">Glisse pour dériver. Pince pour zoomer. Tape l'écran, les étoiles frémiront autour de toi.</p>
+      <p class="man-body">Ce ciel est <em>infini</em> et se referme sur lui-même, comme l'espace. Si tu vas assez loin dans une direction, tu reviens là où t'étais partie. Les couleurs, les nébuleuses, les teintes changent chaque nuit selon la date. Explore. Il y a des choses cachées.</p>
+    </div>
+
+    <div class="man-chapter">
+      <div class="man-heading"><span>II — ce qui se cache</span></div>
+      <p class="man-body">Des formes sont dissimulées dans ce ciel. Pas à l'œil nu, il faut <em>zoomer</em> pour les voir apparaître. Quand tu t'approches, un cercle se dessine lentement autour d'elles.</p>
+      <p class="man-body">Touche à l'intérieur du cercle pour les <em>découvrir</em>.</p>
+
+      <div class="man-diagram-row">
+        <div class="man-diagram man-diagram-heart" onclick="manHeartPop(event)">
+          <svg width="148" height="148" viewBox="0 0 148 148">
+            <defs>
+              <filter id="mf1" x="-80%" y="-80%" width="260%" height="260%">
+                <feGaussianBlur stdDeviation="2.8" result="b"/>
+                <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <circle cx="74" cy="76" r="64" fill="none"
+                    stroke="rgba(140,190,255,0.20)" stroke-width="1.1"
+                    stroke-dasharray="4.5 5.5"
+                    style="transform-origin:74px 76px; animation:man-spin 28s linear infinite;"/>
+            <line x1="20" y1="52" x2="42" y2="27" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.10s ease-out both"/>
+            <line x1="42" y1="27" x2="74" y2="50" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.22s ease-out both"/>
+            <line x1="74" y1="50" x2="106" y2="29" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.34s ease-out both"/>
+            <line x1="106" y1="29" x2="128" y2="50" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.46s ease-out both"/>
+            <line x1="20" y1="52" x2="37" y2="84" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.58s ease-out both"/>
+            <line x1="37" y1="84" x2="74" y2="122" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.70s ease-out both"/>
+            <line x1="74" y1="122" x2="111" y2="82" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.82s ease-out both"/>
+            <line x1="111" y1="82" x2="128" y2="50" stroke="rgba(255,150,178,0.28)" stroke-width="1.2" style="animation:man-fadeop 0.7s 0.94s ease-out both"/>
+            <circle cx="74"  cy="50"  r="3.2" fill="rgba(255,200,218,0.95)" filter="url(#mf1)" style="animation:man-twinkle 3.1s 0.0s ease-in-out infinite"/>
+            <circle cx="42"  cy="27"  r="2.6" fill="rgba(255,175,200,0.88)" filter="url(#mf1)" style="animation:man-twinkle 2.7s 0.5s ease-in-out infinite"/>
+            <circle cx="106" cy="29"  r="2.6" fill="rgba(255,175,200,0.88)" filter="url(#mf1)" style="animation:man-twinkle 4.0s 1.2s ease-in-out infinite"/>
+            <circle cx="20"  cy="52"  r="2.1" fill="rgba(255,152,178,0.72)" filter="url(#mf1)" style="animation:man-twinkle 2.4s 0.8s ease-in-out infinite"/>
+            <circle cx="128" cy="50"  r="2.1" fill="rgba(255,152,178,0.72)" filter="url(#mf1)" style="animation:man-twinkle 3.6s 1.6s ease-in-out infinite"/>
+            <circle cx="37"  cy="84"  r="2.3" fill="rgba(255,175,198,0.80)" filter="url(#mf1)" style="animation:man-twinkle 3.3s 0.3s ease-in-out infinite"/>
+            <circle cx="111" cy="82"  r="2.3" fill="rgba(255,175,198,0.80)" filter="url(#mf1)" style="animation:man-twinkle 2.9s 0.9s ease-in-out infinite"/>
+            <circle cx="74"  cy="122" r="3.2" fill="rgba(255,200,218,0.95)" filter="url(#mf1)" style="animation:man-twinkle 3.8s 2.0s ease-in-out infinite"/>
+          </svg>
+          <div class="man-caption">une constellation, zoom requis</div>
+        </div>
+      </div>
+
+      <p class="man-body">Il y en a plusieurs dans ce ciel. Certaines ressemblent à des choses que tu connais. D'autres... moins. Je te dis pas lesquelles. Cherche.</p>
+      <p class="man-body">Quand tu les trouves toutes, quelque chose se passe. Tu verras.</p>
+    </div>
+
+    <div class="man-chapter">
+      <div class="man-heading"><span>III — l'appareil</span></div>
+      <p class="man-body">En bas au centre. <strong>Trois pellicules par nuit.</strong> Appuie et <em>maintiens</em>, l'anneau autour se charge. Quand il devient <em>doré</em>, tu es à saturation. Relâche à ce moment précis pour <strong>×2 poussière ✦</strong>.</p>
+      <p class="man-body">Les photos vont dans ta galerie. Bouton <em>↓</em> pour sauvegarder. Si ta pellicule est vide, un éclat ✧ peut en débloquer une de plus.</p>
+    </div>
+
+    <div class="man-chapter">
+      <div class="man-heading"><span>IV — poussière ✦ &amp; éclats ✧</span></div>
+      <p class="man-body">Les photos rapportent de la <em>poussière ✦</em>. Détruire des étoiles aussi. Les <em>éclats ✧</em> tombent parfois quand tu démolis une constellation entière, c'est rare.</p>
+      <p class="man-body">C'est la monnaie de ce ciel. Et elle sert à acheter des <strong>cadeaux</strong>, pas des points, pas des badges. Des choses réelles, que tu peux réclamer pour de vrai.</p>
+      <p class="man-body">Comment ? Découvre une constellation, puis <em>zoome dessus et touche-la à nouveau</em>. Un marché s'ouvre avec ce qui t'attend.</p>
+    </div>
+
+    <div class="man-chapter">
+      <div class="man-heading"><span>V — le bouton</span></div>
+      <div class="man-warning">En bas à droite. L'icône qui ressemble à un atome. Ne le presse pas si tu aimes les étoiles.</div>
+      <p class="man-body">Chaque étoile que tu touches explose. Chaque constellation que tu effaces déclenche une réaction en chaîne, les étoiles s'effondrent une par une, dans le bruit et la lumière. Ça rapporte de la poussière. À toi de décider ce qui compte.</p>
+    </div>
+
+    <div class="man-chapter">
+      <div class="man-heading"><span>VI — le temps</span></div>
+      <p class="man-body"><strong>Cinq minutes par jour.</strong> Le cercle en haut à gauche, quand il devient rouge, c'est presque fini. À minuit le ciel se referme.</p>
+      <p class="man-body">Demain, nouveau ciel. Nouvelles couleurs. Mêmes étoiles. Tes découvertes restent.</p>
+      <p class="man-body" style="font-size:12px; color:rgba(140,175,255,0.38);">Si tu manques de temps, tu peux en acheter un peu plus avec de la poussière ✦.</p>
+    </div>
+
+    <div class="man-closing">
+      <div class="man-closing-star">✦</div>
+      <div class="man-closing-text">
+        Ce ciel a été construit pour toi.<br>
+        Chaque nuit.<br>
+        Parce que tu mérites quelque chose qui existe juste pour toi.
+      </div>
+      <div class="man-closing-sig">fin de transmission · émetteur : moi ✦</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Timer HUD ──────────────────────────────────────────────────────────── -->
+<div id="timer-hud">
+  <svg class="timer-svg" viewBox="0 0 52 52" width="52" height="52">
+    <circle cx="26" cy="26" r="22" class="timer-track"/>
+    <circle cx="26" cy="26" r="22" class="timer-arc" id="timer-arc"/>
+  </svg>
+  <div id="timer-time">5:00</div>
+</div>
+
+<!-- ── Pause overlay ─────────────────────────────────────────────────────── -->
+<div id="pause-overlay">
+  <div id="pause-card">
+    <div id="pause-remaining">5:00</div>
+    <div id="pause-label">temps restant</div>
+    <button id="pause-resume-btn">Reprendre ✦</button>
+  </div>
+</div>
+
+<!-- ── Welcome overlay ───────────────────────────────────────────────────── -->
+<div id="timer-welcome">
+  <div class="tw-star">✦</div>
+  <div class="tw-night">Nuit <span id="tw-night-num">1</span></div>
+  <h1 class="tw-title">Coucou Louisa, joyeux anniversaire!! ✦</h1>
+  <p id="tw-subtitle">Explore l'espace tu trouveras des trucs mignons (j'espère)</p>
+  <div class="tw-arc-wrap">
+    <svg viewBox="0 0 108 108" width="108" height="108">
+      <circle cx="54" cy="54" r="44" class="tw-track"/>
+      <circle cx="54" cy="54" r="44" class="tw-arc" id="tw-arc"/>
+    </svg>
+    <div class="tw-arc-inner">
+      <div id="tw-time-text">10:00</div>
+      <div class="tw-arc-label">restant</div>
+    </div>
+  </div>
+  <button id="tw-enter-btn">LET'S GOOOOOO</button>
+  <button id="manual-btn" onclick="document.getElementById('manual-overlay').classList.add('open'); timerFreezeForManual()">Guide de navigation →</button>
+</div>
+
+<!-- ── Expired overlay ───────────────────────────────────────────────────── -->
+<div id="timer-expired">
+  <canvas id="timer-expired-canvas"></canvas>
+  <div class="te-content">
+    <span class="te-star">✦</span>
+    <h2 class="te-title">C'est fini AHAHAHAH</h2>
+    <p class="te-sub">Les étoiles seront encore là demain, promesse du petit doigt ;)</p>
+
+    <!-- Countdown — visual centrepiece -->
+    <div class="te-countdown-wrap">
+      <div class="te-countdown-label">retour dans</div>
+      <div id="te-countdown">-</div>
+    </div>
+
+    <!-- Session stats -->
+    <div class="te-stats">
+      <span id="te-dust-count">0</span><span class="te-stats-unit"> ✦</span>
+      <span class="te-stats-sep">·</span>
+      <span id="te-frag-count">0</span><span class="te-stats-unit"> ✧</span>
+    </div>
+
+    <!-- Actions row: inventory + buy time side by side -->
+    <div class="te-actions">
+      <button class="te-btn" onclick="openGalleryUI('photos')">Tes Étoiles & Cadeaux</button>
+      <div class="te-buy-time">
+        <div class="te-buy-label">Prolonger</div>
+        <div class="te-buy-cost" id="te-buy-cost">100 ✦ · 1 ✧</div>
+        <button class="te-btn te-btn-buy" id="te-buy-btn" onclick="timerBuyTime()">+2 min</button>
+      </div>
+    </div>
+
+    <div class="te-note">Nuit <span id="te-night-num">1</span> — à demain Louisa ✦</div>
+    <button class="te-manual-btn" onclick="document.getElementById('manual-overlay').classList.add('open')">Guide de navigation ?</button>
+  </div>
+</div>
+
+<!-- ── Manual heart easter egg ────────────────────────────────────────────── -->
+<div id="man-heart-pop">je t'aime ♡</div>
+
+<script>
+function manHeartPop(e) {
+  const pop = document.getElementById('man-heart-pop');
+  pop.classList.remove('pop');
+  void pop.offsetWidth;
+  pop.style.left = (e.clientX - 38) + 'px';
+  pop.style.top  = (e.clientY - 16) + 'px';
+  pop.classList.add('pop');
+}
+</script>
+
+<script src="js/config.js"></script>
+<script src="js/haptics.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/night-palette.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/camera.js"></script>
+<script src="js/world-gen.js"></script>
+<script src="js/nuke.js"></script>
+<script src="js/draw-background.js"></script>
+<script src="js/draw-stars.js"></script>
+<script src="js/draw-constellations.js"></script>
+<script src="js/draw-effects.js"></script>
+<script src="js/events.js"></script>
+<script src="js/timer.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>
