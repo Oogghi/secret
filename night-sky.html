@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
 * { margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; user-select: none; -webkit-user-select: none; }
 canvas { position: fixed; top: 0; left: 0; touch-action: none; cursor: grab; }
 #snap {
   position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%);
@@ -1013,96 +1013,142 @@ body.sky-expired #toast          { display: none; }
 body.sky-expired #shop-overlay,
 body.sky-expired #confirm-overlay,
 body.sky-expired #refill-overlay  { display: none !important; }
+body.sky-expired #manual-hud-btn  { display: none; }
+body:has(#timer-welcome.visible) #manual-hud-btn { display: none; }
 
 /* ── Roue Céleste overlay ────────────────────────────────────────────────── */
 #roulette-overlay {
   position: fixed; inset: 0; z-index: 70;
-  background: rgba(4,2,14,0.97);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+  background: rgba(3,1,12,0.75);
+  display: flex; align-items: flex-end; justify-content: center;
   font-family: 'Georgia', serif;
   opacity: 0; pointer-events: none;
-  transition: opacity 0.5s cubic-bezier(0.4,0,0.2,1);
-}
-#roulette-overlay::before {
-  content: '';
-  position: absolute; inset: 0; z-index: 0;
-  background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(100,60,200,0.12) 0%, transparent 75%);
-  pointer-events: none;
+  transition: opacity 0.38s cubic-bezier(0.4,0,0.2,1);
 }
 #roulette-overlay.open { opacity: 1; pointer-events: all; }
-.rl-content {
+
+.rl-sheet {
   position: relative; z-index: 1;
-  text-align: center; padding: 0 24px;
-  max-width: 360px; width: 100%;
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  width: 100%; max-width: 500px;
+  background: linear-gradient(180deg, rgba(14,9,36,0.98) 0%, rgba(8,4,22,0.99) 100%);
+  border: 1px solid rgba(180,160,255,0.11);
+  border-bottom: none;
+  border-radius: 26px 26px 0 0;
+  padding-bottom: max(28px, env(safe-area-inset-bottom, 28px));
+  display: flex; flex-direction: column; align-items: center;
+  box-shadow: 0 -20px 60px rgba(80,40,180,0.18);
+  transform: translateY(40px);
+  transition: transform 0.45s cubic-bezier(0.22,1,0.36,1);
 }
-.rl-star {
-  font-size: 16px; display: block;
-  color: rgba(180,140,255,0.50);
-  animation: twStarPulse 5s ease-in-out infinite;
+#roulette-overlay.open .rl-sheet { transform: translateY(0); }
+
+/* drag handle pill */
+.rl-sheet::before {
+  content: '';
+  display: block; width: 38px; height: 4px;
+  background: rgba(200,185,255,0.18);
+  border-radius: 2px;
+  margin: 14px auto 0;
 }
-.rl-title {
-  font-size: clamp(22px, 5vw, 30px);
-  color: rgba(220,200,255,0.90); letter-spacing: 0.06em;
-  font-weight: normal; margin: 0;
+
+.rl-header {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 0;
 }
+.rl-header-title {
+  font: normal 13px/1 'Georgia', serif;
+  letter-spacing: 0.20em; text-transform: uppercase;
+  color: rgba(195,178,255,0.55);
+}
+.rl-header-spacer { width: 34px; }
+.rl-close-x {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 50%;
+  font: 14px/1 Georgia, serif;
+  color: rgba(175,190,255,0.48);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+.rl-close-x:hover { background: rgba(255,255,255,0.11); color: rgba(215,225,255,0.88); }
+
 .rl-sub {
-  font-size: clamp(11px, 2vw, 13px);
-  font-style: italic;
-  color: rgba(180,150,210,0.45); letter-spacing: 0.07em; margin: 0;
+  font: italic 12px/1 'Georgia', serif;
+  letter-spacing: 0.09em;
+  color: rgba(148,128,195,0.38);
+  margin: 10px 0 2px;
 }
-.rl-wheel-wrap { position: relative; }
+
+.rl-wheel-wrap {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 10px 24px 6px;
+}
 #roulette-canvas {
   display: block;
-  width: min(260px, 78vw);
-  height: min(260px, 78vw);
+  /* pixel dimensions set by JS; CSS just caps it */
+  max-width: calc(100vw - 48px);
 }
+
 .rl-result {
-  min-height: 22px;
-  font-size: clamp(14px, 3vw, 18px);
-  font-style: italic;
-  color: rgba(255,235,150,0.90);
+  height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  font: italic clamp(15px, 4.2vw, 20px)/1 'Georgia', serif;
   letter-spacing: 0.07em;
-  text-shadow: 0 0 20px rgba(255,200,50,0.4);
+  color: rgba(255,228,120,0.96);
+  text-shadow: 0 0 30px rgba(255,195,35,0.55);
+  margin: 8px 24px 16px;
+  opacity: 0;
+  transform: translateY(4px) scale(0.94);
+  transition: opacity 0.40s cubic-bezier(0.22,1,0.36,1),
+              transform 0.40s cubic-bezier(0.22,1,0.36,1);
 }
-.rl-action {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+.rl-result.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.rl-footer {
   width: 100%;
+  padding: 0 22px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
-.rl-btn {
-  padding: 14px 40px; width: 100%;
-  background: rgba(160,100,255,0.10);
-  border: 1px solid rgba(160,100,255,0.30);
-  border-radius: 14px;
-  font: 14px/1 'Georgia', serif; letter-spacing: 0.10em;
-  color: rgba(210,180,255,0.80);
+.rl-spin-btn {
+  width: 100%; padding: 19px 24px;
+  background: rgba(125,75,255,0.14);
+  border: 1px solid rgba(155,105,255,0.36);
+  border-radius: 18px;
+  font: 15px/1 'Georgia', serif;
+  letter-spacing: 0.14em;
+  color: rgba(218,198,255,0.92);
   cursor: pointer;
-  transition: all 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.22s, border-color 0.22s, transform 0.14s, box-shadow 0.22s;
 }
-.rl-btn:hover:not(:disabled) {
-  background: rgba(160,100,255,0.22);
-  border-color: rgba(160,100,255,0.65);
-  color: rgba(235,215,255,1);
+.rl-spin-btn:hover:not(:disabled) {
+  background: rgba(125,75,255,0.26);
+  border-color: rgba(175,130,255,0.68);
+  color: rgba(240,228,255,1);
   transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(100,50,255,0.22);
 }
-.rl-btn:active { transform: translateY(1px); }
-.rl-btn:disabled {
-  border-color: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.25);
-  cursor: default;
+.rl-spin-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+.rl-spin-btn:disabled {
+  background: none;
+  border-color: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.20);
+  cursor: not-allowed;
 }
 .rl-info {
-  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: rgba(180,150,255,0.35);
+  font: 10px/1 'Georgia', serif;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(148,128,195,0.36);
 }
-.rl-close-btn {
-  background: none; border: none; padding: 0;
-  font: 10px/1 'Georgia', serif; letter-spacing: 0.18em; text-transform: uppercase;
-  color: rgba(140,175,255,0.28); cursor: pointer;
-  transition: color 0.25s;
-}
-.rl-close-btn:hover { color: rgba(180,210,255,0.55); }
 
 </style>
 </head>
@@ -1427,19 +1473,21 @@ body.sky-expired #refill-overlay  { display: none !important; }
 
 <!-- ── Roue Céleste overlay ───────────────────────────────────────────────── -->
 <div id="roulette-overlay">
-  <div class="rl-content">
-    <span class="rl-star">✦</span>
-    <h2 class="rl-title">Roue Céleste</h2>
+  <div class="rl-sheet">
+    <div class="rl-header">
+      <button class="rl-close-x" id="roulette-close">✕</button>
+      <span class="rl-header-title">Roue Céleste</span>
+      <span class="rl-header-spacer"></span>
+    </div>
     <p class="rl-sub">La chance sourit aux étoiles perdues</p>
     <div class="rl-wheel-wrap">
-      <canvas id="roulette-canvas" width="260" height="260"></canvas>
+      <canvas id="roulette-canvas" width="300" height="300"></canvas>
     </div>
     <div id="roulette-result" class="rl-result"></div>
-    <div class="rl-action">
-      <button id="roulette-spin-btn" class="rl-btn">Tourner !</button>
+    <div class="rl-footer">
+      <button id="roulette-spin-btn" class="rl-spin-btn">Tourner !</button>
       <div id="roulette-spin-info" class="rl-info">Tirage gratuit ✦</div>
     </div>
-    <button class="rl-close-btn" id="roulette-close">fermer</button>
   </div>
 </div>
 

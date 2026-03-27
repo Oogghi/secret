@@ -227,7 +227,7 @@ function drawConstellationNebulae(t) {
 
 function fireNuke(cx, cy, t) {
   if (!nukeMode) return;
-  if (t - _lastNukeT < 1.0) return;
+  if (t - _lastNukeT < 0.6) return;
   _lastNukeT = t;
 
   // Check constellation stars first — clicking any star of a constellation nukes it
