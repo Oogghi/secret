@@ -1014,6 +1014,96 @@ body.sky-expired #shop-overlay,
 body.sky-expired #confirm-overlay,
 body.sky-expired #refill-overlay  { display: none !important; }
 
+/* ── Roue Céleste overlay ────────────────────────────────────────────────── */
+#roulette-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(4,2,14,0.97);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'Georgia', serif;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.5s cubic-bezier(0.4,0,0.2,1);
+}
+#roulette-overlay::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(100,60,200,0.12) 0%, transparent 75%);
+  pointer-events: none;
+}
+#roulette-overlay.open { opacity: 1; pointer-events: all; }
+.rl-content {
+  position: relative; z-index: 1;
+  text-align: center; padding: 0 24px;
+  max-width: 360px; width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.rl-star {
+  font-size: 16px; display: block;
+  color: rgba(180,140,255,0.50);
+  animation: twStarPulse 5s ease-in-out infinite;
+}
+.rl-title {
+  font-size: clamp(22px, 5vw, 30px);
+  color: rgba(220,200,255,0.90); letter-spacing: 0.06em;
+  font-weight: normal; margin: 0;
+}
+.rl-sub {
+  font-size: clamp(11px, 2vw, 13px);
+  font-style: italic;
+  color: rgba(180,150,210,0.45); letter-spacing: 0.07em; margin: 0;
+}
+.rl-wheel-wrap { position: relative; }
+#roulette-canvas {
+  display: block;
+  width: min(260px, 78vw);
+  height: min(260px, 78vw);
+}
+.rl-result {
+  min-height: 22px;
+  font-size: clamp(14px, 3vw, 18px);
+  font-style: italic;
+  color: rgba(255,235,150,0.90);
+  letter-spacing: 0.07em;
+  text-shadow: 0 0 20px rgba(255,200,50,0.4);
+}
+.rl-action {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 100%;
+}
+.rl-btn {
+  padding: 14px 40px; width: 100%;
+  background: rgba(160,100,255,0.10);
+  border: 1px solid rgba(160,100,255,0.30);
+  border-radius: 14px;
+  font: 14px/1 'Georgia', serif; letter-spacing: 0.10em;
+  color: rgba(210,180,255,0.80);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.rl-btn:hover:not(:disabled) {
+  background: rgba(160,100,255,0.22);
+  border-color: rgba(160,100,255,0.65);
+  color: rgba(235,215,255,1);
+  transform: translateY(-2px);
+}
+.rl-btn:active { transform: translateY(1px); }
+.rl-btn:disabled {
+  border-color: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.25);
+  cursor: default;
+}
+.rl-info {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(180,150,255,0.35);
+}
+.rl-close-btn {
+  background: none; border: none; padding: 0;
+  font: 10px/1 'Georgia', serif; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(140,175,255,0.28); cursor: pointer;
+  transition: color 0.25s;
+}
+.rl-close-btn:hover { color: rgba(180,210,255,0.55); }
+
 </style>
 </head>
 <body>
@@ -1322,6 +1412,7 @@ body.sky-expired #refill-overlay  { display: none !important; }
     <!-- Actions row: inventory + buy time side by side -->
     <div class="te-actions">
       <button class="te-btn" onclick="openGalleryUI('photos')">Tes Étoiles & Cadeaux</button>
+      <button class="te-btn" onclick="rouletteOpen()">Roue Céleste ✦</button>
       <div class="te-buy-time">
         <div class="te-buy-label">Prolonger</div>
         <div class="te-buy-cost" id="te-buy-cost">100 ✦ · 1 ✧</div>
@@ -1331,6 +1422,24 @@ body.sky-expired #refill-overlay  { display: none !important; }
 
     <div class="te-note">Nuit <span id="te-night-num">1</span> — à demain Louisa ✦</div>
     <button class="te-manual-btn" onclick="document.getElementById('manual-overlay').classList.add('open')">Guide de navigation ?</button>
+  </div>
+</div>
+
+<!-- ── Roue Céleste overlay ───────────────────────────────────────────────── -->
+<div id="roulette-overlay">
+  <div class="rl-content">
+    <span class="rl-star">✦</span>
+    <h2 class="rl-title">Roue Céleste</h2>
+    <p class="rl-sub">La chance sourit aux étoiles perdues</p>
+    <div class="rl-wheel-wrap">
+      <canvas id="roulette-canvas" width="260" height="260"></canvas>
+    </div>
+    <div id="roulette-result" class="rl-result"></div>
+    <div class="rl-action">
+      <button id="roulette-spin-btn" class="rl-btn">Tourner !</button>
+      <div id="roulette-spin-info" class="rl-info">Tirage gratuit ✦</div>
+    </div>
+    <button class="rl-close-btn" id="roulette-close">fermer</button>
   </div>
 </div>
 
@@ -1363,6 +1472,7 @@ function manHeartPop(e) {
 <script src="js/events.js"></script>
 <script src="js/timer.js"></script>
 <script src="js/game.js"></script>
+<script src="js/roulette.js"></script>
 <script src="js/main.js"></script>
 
 </body>
